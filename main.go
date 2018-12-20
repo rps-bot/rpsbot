@@ -42,6 +42,10 @@ var (
 		"ticketPrice",
 		"Price of each ticket.",
 	).Default("0.001").Short('p').Float64()
+	donationAddress = kingpin.Flag(
+		"donationAddress",
+		"Address to donate to.",
+	).String()
 	dbPath = kingpin.Flag(
 		"dbPath",
 		"Path to the level db.",
@@ -75,6 +79,7 @@ func main() {
 		*payTime,
 		*schedule,
 		*ticketPrice,
+		*donationAddress,
 		*dbPath,
 		*cashboxWalletPath,
 		*bankWalletPath,

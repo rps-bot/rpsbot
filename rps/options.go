@@ -10,6 +10,7 @@ type Options struct {
 	payTime           uint
 	schedule          string
 	ticketPrice       float64
+	donationAddress   string
 	dbPath            string
 	cashboxWalletPath string
 	bankWalletPath    string
@@ -25,12 +26,13 @@ func NewOptions(
 	payTime uint,
 	schedule string,
 	ticketPrice float64,
+	donationAddress string,
 	dbPath string,
 	cashboxWalletPath string,
 	bankWalletPath string,
 ) Options {
 	return Options{
-		capacity, timeout, opTimeout, modifyTime, roundTime,
-		payTime, schedule, ticketPrice, dbPath, cashboxWalletPath, bankWalletPath,
+		capacity, timeout, opTimeout, modifyTime, roundTime, payTime, schedule,
+		ticketPrice, donationAddress, dbPath, cashboxWalletPath, bankWalletPath,
 	}
 }

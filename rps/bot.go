@@ -2,7 +2,6 @@ package rps
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -148,7 +147,7 @@ func watchClientModify(chatID int64, channels *SynMap, opts *Options) string {
 ////////////****************************************************////////////
 
 // Welcome to everyone.
-func (b Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -195,16 +194,19 @@ func (b Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 			"/leaderboard - show the leaderboard\n\n" +
 
 			"*This bot doesn't take any of your money so the entire bank " +
-			"pays out to players except Bitcoin Cash fees.*\n" +
-
-			"*Beta testing*",
+			"pays out to players except Bitcoin Cash fees.*",
 	)
+
+	if b.opts.donationAddress != "" {
+		reply += fmt.Sprintf("\n\nTo support this bot you can donate some coins to *%s* \U0000263a",
+			b.opts.donationAddress)
+	}
 
 	replyTo(chatID, reply, botAPI, mainKeyboard)
 }
 
 // BuyTicket handles ticket purchase.
-func (b Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -241,17 +243,17 @@ func (b Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 
 	reply = fmt.Sprintf("*%s*", url)
 	replyTo(chatID, reply, botAPI, mainKeyboard)
-	reply = fmt.Sprintf("Okay, now you've got *%d minutes* to pay.\n\n"+
+	reply = fmt.Sprintf("Okay, now you've got *%d minutes* to pay *%f BCH* to the address above.\n\n"+
 		"If you wish to discard this request just type /reset or click to *Reset* button. "+
 		"It's *NOT* recommended to reset paid transaction.",
-		b.opts.payTime)
+		b.opts.payTime, b.opts.ticketPrice)
 	replyTo(chatID, reply, botAPI, mainKeyboard)
 
 	go b.processBuyTicket(chatID, &payChannels, botAPI)
 }
 
 // Reset resets ticket purchase and any active modifying actions.
-func (b Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -260,7 +262,7 @@ func (b Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 		return
 	}
 
-	replyTo(chatID, "Reseting in progress, please wait up to 20 seconds.", botAPI, mainKeyboard)
+	replyTo(chatID, "Reseting in progress, please wait up to 15 seconds.", botAPI, mainKeyboard)
 
 	if clientModifyChannels.Exist(chatID) {
 		ch := clientModifyChannels.Get(chatID).(chan string)
@@ -293,7 +295,7 @@ func (b Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 
 // Subscribe enables notifications for user.
 // Without subscription almost any action isn't available
-func (b Bot) Subscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Subscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := "You're now subscribed!"
 	chatID := update.Message.Chat.ID
 
@@ -331,7 +333,7 @@ func (b Bot) Subscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 }
 
 // Unsubscribe disables notifications for user.
-func (b Bot) Unsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Unsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	var markup tgbotapi.InlineKeyboardMarkup
 	chatID := update.Message.Chat.ID
 
@@ -354,7 +356,7 @@ func needToBeSubscribed(chatID int64, botAPI *tgbotapi.BotAPI) {
 }
 
 // Status shows status message filled up with user's stats.
-func (b Bot) Status(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Status(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	var user *User
 	reply := ""
 	chatID := update.Message.Chat.ID
@@ -396,7 +398,7 @@ func (b Bot) Status(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 }
 
 // Leaderboard shows leaderboard message.
-func (b Bot) Leaderboard(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) Leaderboard(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -415,7 +417,7 @@ func (b Bot) Leaderboard(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 }
 
 // ChangeName updates username of user.
-func (b Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -452,7 +454,7 @@ func (b Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 }
 
 // ChangeWalletAddress updates wallet address of user.
-func (b Bot) ChangeWalletAddress(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) ChangeWalletAddress(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
@@ -499,7 +501,7 @@ func (b Bot) ChangeWalletAddress(update tgbotapi.Update, botAPI *tgbotapi.BotAPI
 
 // YesUnsubscribe confirms unsubscribe action.
 // Appear only when user has ticket.
-func (b Bot) YesUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) YesUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	var chatID int64
 	reply := "You're now unsubscribed."
 
@@ -527,7 +529,7 @@ func (b Bot) YesUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 }
 
 // NoUnsubscribe dismiss unsubscribe action.
-func (b Bot) NoUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) NoUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 	reply := "You won't be unsubscribed."
 
@@ -546,71 +548,47 @@ func (b Bot) NoUnsubscribe(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 ////////////************ Wallet operations start ***************////////////
 ////////////****************************************************////////////
 
-func (b Bot) cleanupProcessBuyTicket(
+func (b *Bot) cleanupProcessBuyTicket(
 	chatID int64,
 	requestID string,
-	reply string,
 	channels *SynMap,
 	botAPI *tgbotapi.BotAPI,
 ) {
 	Verbose.Printf("Cleaning up request for:\n\tChatID: %d\n\tRequestID: %s",
 		chatID, requestID)
 
-	if err := unregisterRequest(chatID, b.requests, &payChannels); err != nil {
+	if err := unregisterRequest(chatID, b.requests, channels); err != nil {
 		Warning.Printf("Can't unregister request:\n\tChatID: %d\n\t%s", chatID, err)
 	}
+
 	if err := RemoveRequest(requestID, b.opts.cashboxWalletPath); err != nil {
 		Error.Printf("Can't remove request:\n\tRequestID: %s\n\t%s", requestID, err)
 	}
-
-	replyTo(chatID, reply, botAPI, mainKeyboard)
 }
 
-func (b Bot) processBuyTicket(
+func (b *Bot) processBuyTicket(
 	chatID int64,
 	channels *SynMap,
 	botAPI *tgbotapi.BotAPI,
 ) {
-	var paymentStatus, confirmed uint8
+	var paymentStatus uint8
 	reply := ""
 	requestID := b.requests.Get(strconv.FormatInt(chatID, 10))
 
 	paymentStatus, err := processRequest(chatID, requestID, b.opts.cashboxWalletPath,
 		b.opts.payTime*60, b.requests, channels, botAPI)
 	if err != nil {
-		reply = "Can't process your request, please try again."
 		Error.Printf("Request can't be processed:\n\tChatID: %d\n\tRequestID: %s\n\t%s",
 			chatID, requestID, err)
-		b.cleanupProcessBuyTicket(chatID, requestID, reply, channels, botAPI)
+		reply = "Can't process your request, please try again."
+		replyTo(chatID, reply, botAPI, mainKeyboard)
+		b.cleanupProcessBuyTicket(chatID, requestID, channels, botAPI)
 		return
 	}
 	if paymentStatus == 0 {
-		reply = "We've got your transaction, now it has to get at least one confirmation (~10 min)."
 		Verbose.Printf("Successfully got \"Paid\" status for:\n\tChatID: %d\n\tRequestID: %s",
 			chatID, requestID)
-		replyTo(chatID, reply, botAPI, mainKeyboard)
-	} else if paymentStatus == 1 {
-		reply = "Time is up, would you like to try to /buyticket again?"
-		Verbose.Printf("Time is up for:\n\tChatID: %d\n\tRequestID: %s",
-			chatID, requestID)
-		b.cleanupProcessBuyTicket(chatID, requestID, reply, channels, botAPI)
-		return
-	} else {
-		Verbose.Printf("Transaction has been reset:\n\tChatID: %d\n\tequestID:%s",
-			chatID, requestID)
-		return
-	}
 
-	confirmed, err = processPayment(chatID, requestID, b.opts.cashboxWalletPath,
-		b.requests, channels, botAPI)
-	if err != nil {
-		reply = "Sorry, but probably your transaction stuck, check its status by transaction ID."
-		Error.Printf("Payment hasn't been confirmed:\n\tChatID: %d\n\tRequestID: %s\n\t%s",
-			chatID, requestID, err)
-		replyTo(chatID, reply, botAPI, mainKeyboard)
-		return
-	}
-	if confirmed == 0 {
 		user := b.users.Get(chatID)
 		user.SetHasTicket(true)
 		user.SetLastTicketDate(time.Now())
@@ -619,20 +597,18 @@ func (b Bot) processBuyTicket(
 				chatID, requestID)
 		}
 
-		reply = "You've got a ticket! To check current game schedule type /status."
-		Verbose.Printf("Payment is confirmed for:\n\tChatID: %d\n\tRequestID: %s",
-			chatID, requestID)
-		b.cleanupProcessBuyTicket(chatID, requestID, reply, channels, botAPI)
-	} else if confirmed == 1 {
-		reply = "Sorry, but probably your transaction stuck, check its status by transaction ID."
-		Verbose.Printf("Payment hasn't been confirmed for:\n\tChatID: %d\n\tRequestID: %s",
-			chatID, requestID)
+		reply = "You've got a ticket \U0001f39f To check current game schedule type /status."
 		replyTo(chatID, reply, botAPI, mainKeyboard)
-		return
+		b.cleanupProcessBuyTicket(chatID, requestID, channels, botAPI)
+	} else if paymentStatus == 1 {
+		Verbose.Printf("Time is up for:\n\tChatID: %d\n\tRequestID: %s",
+			chatID, requestID)
+		reply = "Time is up, would you like to try to /buyticket again?"
+		replyTo(chatID, reply, botAPI, mainKeyboard)
+		b.cleanupProcessBuyTicket(chatID, requestID, channels, botAPI)
 	} else {
 		Verbose.Printf("Transaction has been reset:\n\tChatID: %d\n\tequestID:%s",
 			chatID, requestID)
-		return
 	}
 }
 
@@ -662,24 +638,9 @@ func unregisterRequest(
 	}
 
 	if channels.Exist(chatID) {
-		i := 0
 		ch := channels.Get(chatID).(chan bool)
-		ch <- true
-		for {
-			select {
-			case _, ok := <-ch:
-				if !ok {
-					channels.Delete(chatID)
-					return nil
-				}
-			default:
-				i++
-				time.Sleep(time.Duration(30) * time.Second)
-				if i > 1 {
-					return errors.New("Something is very wrong with request removing")
-				}
-			}
-		}
+		close(ch)
+		channels.Delete(chatID)
 	}
 
 	return nil
@@ -705,11 +666,12 @@ func watchTransaction(
 
 	for {
 		select {
-		case <-ch:
-			defer close(ch)
-			Verbose.Printf("Watching has been reset:\n\tChatID: %d\n\tRequestID: %s",
-				chatID, requestID)
-			return 2, nil
+		case _, ok := <-ch:
+			if !ok {
+				Verbose.Printf("Watching has been reset:\n\tChatID: %d\n\tRequestID: %s",
+					chatID, requestID)
+				return 2, nil
+			}
 		default:
 			request, err := GetRequest(requestID, walletPath)
 			if err != nil {
@@ -724,15 +686,13 @@ func watchTransaction(
 				return 0, nil
 			}
 
-			if timeToWatch <= 15*i {
+			if timeToWatch <= 10*i {
 				Verbose.Printf("Stopped to watch for request:\n\tChatID: %d\n\tRequestID: %s",
 					chatID, requestID)
-				close(ch)
-				channels.Delete(chatID)
 				return 1, nil
 			}
 
-			time.Sleep(time.Duration(15) * time.Second)
+			time.Sleep(time.Duration(10) * time.Second)
 			i++
 		}
 	}
@@ -764,31 +724,6 @@ func processRequest(
 	return paymentStatus, nil
 }
 
-func processPayment(
-	chatID int64,
-	requestID string,
-	walletPath string,
-	requests *LDBMap,
-	channels *SynMap,
-	botAPI *tgbotapi.BotAPI,
-) (uint8, error) {
-	confirmed, err := watchTransaction(chatID,
-		3600, "confirmations", float64(1), walletPath, requests, channels,
-		func(a interface{}, b interface{}) bool {
-			if a.(float64) >= b.(float64) {
-				return true
-			}
-			return false
-		},
-	)
-
-	if err != nil {
-		return confirmed, err
-	}
-
-	return confirmed, nil
-}
-
 ////////////****************************************************////////////
 ////////////************ Wallet operations end *****************////////////
 ////////////****************************************************////////////
@@ -802,7 +737,7 @@ func formLeaderboard(users *Users) []*User {
 	leaderboard := make([]*User, len(totalWonAmountLST))
 	for i := len(totalWonAmountLST) - 1; i >= 0; i-- {
 		leaderboard[len(totalWonAmountLST)-i-1] = totalWonAmountLST[i]
-		totalWonAmountLST[i].SetLeaderboardPosition(uint32(len(leaderboard) - 1))
+		totalWonAmountLST[i].SetLeaderboardPosition(uint32(len(totalWonAmountLST) - i))
 		users.Put(totalWonAmountLST[i].GetUserID(), totalWonAmountLST[i])
 	}
 
@@ -823,7 +758,7 @@ func alignPlayers(players []int64, opts *Options) ([]int64, []int64) {
 
 // GamePrepare takes all necessary actions to prepare the game.
 // Sort users by last ticket purchase date and align to ^2 number.
-func (b Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
+func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	lastTicketDateSorted := b.users.FormLastTicketDateList()
 
@@ -835,7 +770,7 @@ func (b Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	}
 
 	if len(b.players) < 2 {
-		Info.Printf("Not enough players, game won't be started.")
+		Info.Printf("Not enough players, game won't start.")
 		reply = "There is not enough players, can't start the game for now."
 		replyToMany(reply, b.players, botAPI, mainKeyboard)
 		return
@@ -877,8 +812,8 @@ func (b Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 		Verbose.Printf("Requests of the bank wallet cleared successfully.")
 	}
 
-	// Wait 30 seconds before start the game
-	time.Sleep(30 * time.Second)
+	// Wait 10 seconds before start the game
+	time.Sleep(10 * time.Second)
 	if err := b.stats.Put("game", "true"); err != nil {
 		Error.Printf("Can't set game status to true\n\t%s", err)
 		replyToMany(reply, b.players, botAPI, mainKeyboard)
@@ -889,7 +824,7 @@ func (b Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 }
 
 // GameRestore resurects game if bot crashed.
-func (b Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
+func (b *Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
 	for uid, user := range b.users.Iterate() {
 		if user.GetIsPlayer() == true {
 			b.players = append(b.players, uid)
@@ -902,7 +837,7 @@ func (b Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
 }
 
 // GameReset resets all users to pregame state and cleans players list.
-func (b Bot) GameReset(botAPI *tgbotapi.BotAPI) {
+func (b *Bot) GameReset(botAPI *tgbotapi.BotAPI) {
 	for _, chatID := range b.players {
 		userReset(chatID, b.users)
 		replyTo(chatID, "This round is over, thank you for the game!", botAPI, mainKeyboard)
@@ -931,7 +866,7 @@ func userReset(id int64, users *Users) {
 }
 
 // MakeAMove implements user's move.
-func (b Bot) MakeAMove(move byte, update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
+func (b *Bot) MakeAMove(move byte, update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply, moves := "", ""
 	chatID := update.Message.Chat.ID
 
@@ -1089,15 +1024,6 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 
 	for len(b.players) > 1 {
 		gameChannels := NewSynMap()
-		for _, id := range b.players {
-			user := b.users.Get(id)
-			moves := user.GetPlaySequence()
-			if len(moves) > 0 {
-				moves = moves[:len(moves)-1]
-				user.SetPlaySequence(moves)
-				b.users.Put(id, user)
-			}
-		}
 
 		// Pause in-between rounds
 		time.Sleep(time.Duration(b.opts.timeout) * time.Second)
@@ -1129,6 +1055,10 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 			if len(b.players) == 1 {
 				reply = fmt.Sprintf("You won the final prize \U0001f389 "+
 					"Won amount: *%f BCH* plus extra coins \U0001f381", userWinner.GetLastWonAmount())
+				if b.opts.donationAddress != "" {
+					reply += fmt.Sprintf(" You can support this bot by donating to *%s*"+
+						"Thank you and have a nice day \U0001f60a", b.opts.donationAddress)
+				}
 				replyTo(winner, reply, botAPI, gameKeyboard)
 				if err := PayToUser(userWinner, -1, b.opts.bankWalletPath); err != nil {
 					Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
@@ -1146,13 +1076,18 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 
 			reply = fmt.Sprintf("You lose! Won amount: *%f BCH* \U0001f4b6",
 				userLoser.GetLastWonAmount())
-			replyTo(loser, reply, botAPI, mainKeyboard)
 			if userLoser.GetLastWonAmount() > 0.0 {
 				if err := PayToUser(userLoser, userLoser.GetLastWonAmount(), b.opts.bankWalletPath); err != nil {
 					Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
 						userLoser.GetUserID(), userLoser.GetName(), err)
 				}
+				if userLoser.GetLastWonAmount() > b.opts.ticketPrice*3 &&
+					b.opts.donationAddress != "" {
+					reply += fmt.Sprintf(" \n\nYou can support this bot by donating to *%s* "+
+						"Thank you and have a nice day \U0001f60a", b.opts.donationAddress)
+				}
 			}
+			replyTo(loser, reply, botAPI, mainKeyboard)
 			Info.Printf("Loser:\n\tUserID: %d\n\tUsername: %s\n\tAmount: %f",
 				userLoser.GetUserID(), userLoser.GetName(), userLoser.GetLastWonAmount())
 
@@ -1160,6 +1095,16 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 				userWinner.GetLastWonAmount())
 			if err := b.users.Put(winner, userWinner); err != nil {
 				Error.Printf("Can't update winner after the round\n\t%s", err)
+			}
+		}
+
+		for _, id := range b.players {
+			user := b.users.Get(id)
+			moves := user.GetPlaySequence()
+			if len(moves) > 0 && moves[len(moves)-1] == '#' {
+				moves = moves[:len(moves)-1]
+				user.SetPlaySequence(moves)
+				b.users.Put(id, user)
 			}
 		}
 	}
@@ -1176,7 +1121,7 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 ////////////****************************************************////////////
 
 // Start starts the bot.
-func (b Bot) Start() {
+func (b *Bot) Start() {
 	botAPI, err := tgbotapi.NewBotAPI(b.token)
 	if err != nil {
 		Error.Println("Can't authenticate with given token")
@@ -1223,7 +1168,17 @@ func (b Bot) Start() {
 
 	updates, err := botAPI.GetUpdatesChan(u)
 
-	b.crn.AddFunc(b.opts.schedule, func() { b.GamePrepare(botAPI) })
+	b.crn.AddFunc(b.opts.schedule, func() {
+		if b.stats.Get("game") != "true" {
+			b.GamePrepare(botAPI)
+		}
+	})
+
+	// From leaderboard
+	*b.leaderboard = []*User{}
+	for _, u := range formLeaderboard(b.users) {
+		*b.leaderboard = append(*b.leaderboard, u)
+	}
 
 	for update := range updates {
 		if update.Message != nil {
