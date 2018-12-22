@@ -8,11 +8,16 @@ import (
 )
 
 // GetBalance returns current balance of specified wallet
-func GetBalance(walletPath string) (float64, error) {
+func GetBalance(walletPath string, testnet bool) (float64, error) {
 	var request map[string]json.RawMessage
 	var _confirmed, _unconfirmed string
 
-	_res, err := ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s getbalance",
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
+	_res, err := ExecCMD(fmt.Sprintf("electron-cash -w %s getbalance"+testnetArg,
 		walletPath))
 	if err != nil {
 		if string(_res) == "false\n" {
@@ -45,10 +50,15 @@ func GetBalance(walletPath string) (float64, error) {
 }
 
 // GetRequest returns request's metadata
-func GetRequest(requestID string, walletPath string) (map[string]json.RawMessage, error) {
+func GetRequest(requestID string, walletPath string, testnet bool) (map[string]json.RawMessage, error) {
 	var request map[string]json.RawMessage
 
-	res, err := ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s getrequest %s",
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
+	res, err := ExecCMD(fmt.Sprintf("electron-cash -w %s getrequest %s"+testnetArg,
 		walletPath, requestID))
 	if err != nil {
 		return map[string]json.RawMessage{}, err
@@ -62,9 +72,9 @@ func GetRequest(requestID string, walletPath string) (map[string]json.RawMessage
 }
 
 // PayToUser performs pay to the specified user
-func PayToUser(user *User, amount float64, walletPath string) error {
+func PayToUser(user *User, amount float64, walletPath string, testnet bool) error {
 	if user.GetWalletAddress() != "" {
-		if err := PayTo(user.GetWalletAddress(), amount, walletPath); err != nil {
+		if err := PayTo(user.GetWalletAddress(), amount, walletPath, testnet); err != nil {
 			return err
 		}
 	}
@@ -73,17 +83,22 @@ func PayToUser(user *User, amount float64, walletPath string) error {
 }
 
 // PayTo performs pay to specified address
-func PayTo(dstAddress string, amount float64, walletPath string) error {
+func PayTo(dstAddress string, amount float64, walletPath string, testnet bool) error {
 	var request map[string]json.RawMessage
 	var hexID string
 	var res []byte
 	var err error
 
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
 	if amount != -1 {
-		res, err = ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s payto %s %f",
+		res, err = ExecCMD(fmt.Sprintf("electron-cash -w %s payto %s %f"+testnetArg,
 			walletPath, dstAddress, amount))
 	} else {
-		res, err = ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s payto %s !",
+		res, err = ExecCMD(fmt.Sprintf("electron-cash -w %s payto %s !"+testnetArg,
 			walletPath, dstAddress))
 	}
 	if err != nil {
@@ -99,7 +114,7 @@ func PayTo(dstAddress string, amount float64, walletPath string) error {
 	}
 	json.Unmarshal(request["hex"], &hexID)
 
-	res, err = ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s broadcast %s",
+	res, err = ExecCMD(fmt.Sprintf("electron-cash -w %s broadcast %s"+testnetArg,
 		walletPath, hexID))
 	if err != nil {
 		if string(res) == "false\n" {
@@ -112,11 +127,16 @@ func PayTo(dstAddress string, amount float64, walletPath string) error {
 }
 
 // CreateRequest creates payment request
-func CreateRequest(amount float64, walletPath string) (string, string, error) {
+func CreateRequest(amount float64, walletPath string, testnet bool) (string, string, error) {
 	var request map[string]json.RawMessage
 	var address, url string
 
-	res, err := ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s addrequest %f",
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
+	res, err := ExecCMD(fmt.Sprintf("electron-cash -w %s addrequest %f"+testnetArg,
 		walletPath, amount))
 	if err != nil {
 		return "", "", err
@@ -141,8 +161,13 @@ func CreateRequest(amount float64, walletPath string) (string, string, error) {
 }
 
 // RemoveRequest removes payment request
-func RemoveRequest(requestID string, walletPath string) error {
-	res, err := ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s rmrequest %s",
+func RemoveRequest(requestID string, walletPath string, testnet bool) error {
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
+	res, err := ExecCMD(fmt.Sprintf("electron-cash -w %s rmrequest %s"+testnetArg,
 		walletPath, requestID))
 	if err != nil {
 		return err
@@ -155,8 +180,13 @@ func RemoveRequest(requestID string, walletPath string) error {
 }
 
 // ClearRequests removes all active requests
-func ClearRequests(walletPath string) error {
-	res, err := ExecCMD(fmt.Sprintf("electron-cash --testnet -w %s clearrequests",
+func ClearRequests(walletPath string, testnet bool) error {
+	testnetArg := ""
+	if testnet {
+		testnetArg = " --testnet"
+	}
+
+	res, err := ExecCMD(fmt.Sprintf("electron-cash -w %s clearrequests"+testnetArg,
 		walletPath))
 	if err != nil {
 		return err

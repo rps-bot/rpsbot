@@ -221,7 +221,7 @@ func (b *Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 		return
 	}
 
-	address, url, err := CreateRequest(b.opts.ticketPrice, b.opts.cashboxWalletPath)
+	address, url, err := CreateRequest(b.opts.ticketPrice, b.opts.cashboxWalletPath, b.opts.testnet)
 	if err != nil {
 		Error.Printf("Can't create a new request:\n\t%s", err)
 		replyError()
@@ -269,7 +269,7 @@ func (b *Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 			replyTo(chatID, reply, botAPI, mainKeyboard)
 			return
 		}
-		if err := RemoveRequest(requestID, b.opts.cashboxWalletPath); err != nil {
+		if err := RemoveRequest(requestID, b.opts.cashboxWalletPath, b.opts.testnet); err != nil {
 			Error.Printf("Can't remove request:\n\tRequestID: %s\n\t%s", requestID, err)
 		}
 		Verbose.Printf("Reset successfully:\n\tChatID: %d\n\tRequestID: %s",
@@ -551,7 +551,7 @@ func (b *Bot) cleanupProcessBuyTicket(
 		Warning.Printf("Can't unregister request:\n\tChatID: %d\n\t%s", chatID, err)
 	}
 
-	if err := RemoveRequest(requestID, b.opts.cashboxWalletPath); err != nil {
+	if err := RemoveRequest(requestID, b.opts.cashboxWalletPath, b.opts.testnet); err != nil {
 		Error.Printf("Can't remove request:\n\tRequestID: %s\n\t%s", requestID, err)
 	}
 }
@@ -565,8 +565,7 @@ func (b *Bot) processBuyTicket(
 	reply := ""
 	requestID := b.requests.Get(strconv.FormatInt(chatID, 10))
 
-	paymentStatus, err := processRequest(chatID, requestID, b.opts.cashboxWalletPath,
-		b.opts.payTime*60, b.requests, channels, botAPI)
+	paymentStatus, err := b.processRequest(chatID, requestID, channels, botAPI)
 	if err != nil {
 		Error.Printf("Request can't be processed:\n\tChatID: %d\n\tRequestID: %s\n\t%s",
 			chatID, requestID, err)
@@ -636,19 +635,39 @@ func unregisterRequest(
 	return nil
 }
 
-func watchTransaction(
+func (b *Bot) processRequest(
 	chatID int64,
-	timeToWatch uint,
+	requestID string,
+	channels *SynMap,
+	botAPI *tgbotapi.BotAPI,
+) (uint8, error) {
+	paymentStatus, err := b.watchTransaction(chatID,
+		"status", "Paid", channels,
+		func(a interface{}, b interface{}) bool {
+			if a == b {
+				return true
+			}
+			return false
+		},
+	)
+
+	if err != nil {
+		return paymentStatus, err
+	}
+
+	return paymentStatus, nil
+}
+
+func (b *Bot) watchTransaction(
+	chatID int64,
 	key string,
 	value interface{},
-	walletPath string,
-	requests *LDBMap,
 	channels *SynMap,
 	cmp compare,
 ) (uint8, error) {
 	var requestField interface{}
 	var i uint
-	requestID := requests.Get(strconv.FormatInt(chatID, 10))
+	requestID := b.requests.Get(strconv.FormatInt(chatID, 10))
 	ch := channels.Get(chatID).(chan bool)
 
 	Verbose.Printf("Watching for request:\n\tChatID: %d\n\tRequestID: %s",
@@ -663,7 +682,7 @@ func watchTransaction(
 				return 2, nil
 			}
 		default:
-			request, err := GetRequest(requestID, walletPath)
+			request, err := GetRequest(requestID, b.opts.cashboxWalletPath, b.opts.testnet)
 			if err != nil {
 				Error.Printf("Can't get request:\n\tRequestID: %s\n\t%s", requestID, err)
 				return 1, err
@@ -676,7 +695,7 @@ func watchTransaction(
 				return 0, nil
 			}
 
-			if timeToWatch <= 5*i {
+			if b.opts.payTime*60 <= i*5 {
 				Verbose.Printf("Stopped to watch for request:\n\tChatID: %d\n\tRequestID: %s",
 					chatID, requestID)
 				return 1, nil
@@ -686,32 +705,6 @@ func watchTransaction(
 			i++
 		}
 	}
-}
-
-func processRequest(
-	chatID int64,
-	requestID string,
-	walletPath string,
-	timeout uint,
-	requests *LDBMap,
-	channels *SynMap,
-	botAPI *tgbotapi.BotAPI,
-) (uint8, error) {
-	paymentStatus, err := watchTransaction(chatID,
-		timeout, "status", "Paid", walletPath, requests, channels,
-		func(a interface{}, b interface{}) bool {
-			if a == b {
-				return true
-			}
-			return false
-		},
-	)
-
-	if err != nil {
-		return paymentStatus, err
-	}
-
-	return paymentStatus, nil
 }
 
 ////////////****************************************************////////////
@@ -775,7 +768,8 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	lastTicketDateSorted := b.users.FormLastTicketDateList()
 	replyCritical := func() {
 		reply = "Due the critical error game couldn't start this time, please " +
-			"accept our apologies and wait for the next round. Your funds are probably safe and sound \U0001f642"
+			"accept our apologies and wait for the next round." +
+			"Your funds are probably safe and sound \U0001f642"
 		replyToMany(b.players, reply, botAPI, mainKeyboard)
 	}
 
@@ -822,7 +816,7 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 			return
 		}
 
-		address, _, err := CreateRequest(1, b.opts.bankWalletPath)
+		address, _, err := CreateRequest(1, b.opts.bankWalletPath, b.opts.testnet)
 		if err != nil {
 			Error.Printf("Can't create request to move money to the bank. CRITICAL.\n\t%s", err)
 			replyCritical()
@@ -833,13 +827,13 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 		if len(tail) != 0 {
 			move = float64(len(b.players)) * b.opts.ticketPrice
 		}
-		if err := PayTo(address, move, b.opts.cashboxWalletPath); err != nil {
+		if err := PayTo(address, move, b.opts.cashboxWalletPath, b.opts.testnet); err != nil {
 			Error.Printf("Can't move money to the bank. CRITICAL.\n\t%s", err)
 			replyCritical()
 			return
 		}
 		Info.Printf("Funds have been moved to the bank successfully.")
-		if err := ClearRequests(b.opts.bankWalletPath); err != nil {
+		if err := ClearRequests(b.opts.bankWalletPath, b.opts.testnet); err != nil {
 			Warning.Printf("Can't clear requests of the bank wallet:\n\t%s", err)
 		} else {
 			Verbose.Printf("Requests of the bank wallet cleared successfully.")
@@ -880,12 +874,13 @@ func (b *Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
 	for _, id := range tail {
 		userReset(id, b.users)
 		user := b.users.Get(id)
-		if err := PayToUser(user, user.GetLastWonAmount(), b.opts.bankWalletPath); err != nil {
+		if err := PayToUser(user, user.GetLastWonAmount(), b.opts.bankWalletPath, b.opts.testnet); err != nil {
 			Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
 				user.GetUserID(), user.GetName(), err)
 		}
 		reply = fmt.Sprintf("Something wrong has happened, very sorry for inconvenience, "+
-			"but this game is ended for you \U0001f614 Won amount: *%f BCH* \U0001f4b6", user.GetLastWonAmount())
+			"but this game is ended for you \U0001f614 Won amount: *%f BCH* \U0001f4b6",
+			user.GetLastWonAmount())
 		replyTo(id, reply, botAPI, mainKeyboard)
 	}
 
@@ -1124,7 +1119,7 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 						"Thank you and have a nice day \U0001f60a", b.opts.donationAddress)
 				}
 				replyTo(winner, reply, botAPI, gameKeyboard)
-				if err := PayToUser(userWinner, -1, b.opts.bankWalletPath); err != nil {
+				if err := PayToUser(userWinner, -1, b.opts.bankWalletPath, b.opts.testnet); err != nil {
 					Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
 						userWinner.GetUserID(), userWinner.GetName(), err)
 				}
@@ -1142,7 +1137,7 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 				userLoser.GetLastWonAmount())
 			if userLoser.GetLastWonAmount() > 0.0 {
 				if err := PayToUser(userLoser, userLoser.GetLastWonAmount(),
-					b.opts.bankWalletPath); err != nil {
+					b.opts.bankWalletPath, b.opts.testnet); err != nil {
 					Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
 						userLoser.GetUserID(), userLoser.GetName(), err)
 				}

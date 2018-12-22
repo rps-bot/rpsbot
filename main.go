@@ -42,6 +42,10 @@ var (
 		"ticketPrice",
 		"Price of each ticket.",
 	).Default("0.001").Short('p').Float64()
+	testnet = kingpin.Flag(
+		"testnet",
+		"Run bot on testnet.",
+	).Default("false").Bool()
 	donationAddress = kingpin.Flag(
 		"donationAddress",
 		"Address to donate to.",
@@ -79,6 +83,7 @@ func main() {
 		*payTime,
 		*schedule,
 		*ticketPrice,
+		*testnet,
 		*donationAddress,
 		*dbPath,
 		*cashboxWalletPath,
