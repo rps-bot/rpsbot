@@ -125,7 +125,10 @@ func watchClientModify(chatID int64, channels *SynMap, opts *Options) string {
 		select {
 		case val, _ := <-ch:
 			if val == "" {
-				Verbose.Printf("Watching has been reset:\n\tChatID: %d",
+				Verbose.Printf("Watching for modify request has been reset:\n\tChatID: %d",
+					chatID)
+			} else {
+				Verbose.Printf("Data modified successfully:\n\tChatID: %d",
 					chatID)
 			}
 			return val
@@ -426,7 +429,7 @@ func (b *Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 
 		name := watchClientModify(chatID, &clientModifyChannels, b.opts)
 		if name == "" {
-			reply = "Request is timeouted or reset."
+			reply = "Request is expired or reset."
 			replyTo(chatID, reply, botAPI, mainKeyboard)
 			return
 		}
@@ -463,7 +466,7 @@ func (b *Bot) ChangeWalletAddress(update tgbotapi.Update, botAPI *tgbotapi.BotAP
 
 		wallet := watchClientModify(chatID, &clientModifyChannels, b.opts)
 		if wallet == "" {
-			reply = "Request is timeouted or reset."
+			reply = "Request is expired or reset."
 			replyTo(chatID, reply, botAPI, mainKeyboard)
 			return
 		}
