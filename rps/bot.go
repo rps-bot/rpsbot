@@ -209,6 +209,10 @@ func (b *Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 func (b *Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
+	replyError := func() {
+		reply = "Something went wrong while processing request, please try again later."
+		replyTo(chatID, reply, botAPI, mainKeyboard)
+	}
 
 	if !b.users.Exist(chatID) || b.users.Exist(chatID) && !b.users.Get(chatID).GetSubscribed() {
 		needToBeSubscribed(chatID, botAPI)
@@ -230,14 +234,12 @@ func (b *Bot) BuyTicket(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	address, url, err := CreateRequest(b.opts.ticketPrice, b.opts.cashboxWalletPath)
 	if err != nil {
 		Error.Printf("Can't create a new request:\n\t%s", err)
-		reply = "Something went wrong while creating request, please try again later."
-		replyTo(chatID, reply, botAPI, mainKeyboard)
+		replyError()
 		return
 	}
 	if err := registerRequest(chatID, address, b.requests, &payChannels); err != nil {
 		Error.Printf("Can't create a new request:\n\t%s", err)
-		reply = "Something went wrong while registering request, please try again later."
-		replyTo(chatID, reply, botAPI, mainKeyboard)
+		replyError()
 		return
 	}
 
@@ -273,14 +275,12 @@ func (b *Bot) Reset(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 		requestID := b.requests.Get(strconv.FormatInt(chatID, 10))
 		if err := unregisterRequest(chatID, b.requests, &payChannels); err != nil {
 			Warning.Printf("Can't unregister request:\n\tChatID: %d\n\t%s", chatID, err)
-			reply = "Something went wrong while request unregistering, please try again."
+			reply = "Something went wrong, please try again."
 			replyTo(chatID, reply, botAPI, mainKeyboard)
 			return
 		}
 		if err := RemoveRequest(requestID, b.opts.cashboxWalletPath); err != nil {
 			Error.Printf("Can't remove request:\n\tRequestID: %s\n\t%s", requestID, err)
-			reply = "Something went wrong while request removing."
-			replyTo(chatID, reply, botAPI, mainKeyboard)
 		}
 		Verbose.Printf("Reset successfully:\n\tChatID: %d\n\tRequestID: %s",
 			chatID, requestID)
@@ -686,13 +686,13 @@ func watchTransaction(
 				return 0, nil
 			}
 
-			if timeToWatch <= 10*i {
+			if timeToWatch <= 5*i {
 				Verbose.Printf("Stopped to watch for request:\n\tChatID: %d\n\tRequestID: %s",
 					chatID, requestID)
 				return 1, nil
 			}
 
-			time.Sleep(time.Duration(10) * time.Second)
+			time.Sleep(time.Duration(5) * time.Second)
 			i++
 		}
 	}
@@ -738,7 +738,10 @@ func formLeaderboard(users *Users) []*User {
 	for i := len(totalWonAmountLST) - 1; i >= 0; i-- {
 		leaderboard[len(totalWonAmountLST)-i-1] = totalWonAmountLST[i]
 		totalWonAmountLST[i].SetLeaderboardPosition(uint32(len(totalWonAmountLST) - i))
-		users.Put(totalWonAmountLST[i].GetUserID(), totalWonAmountLST[i])
+		users.BatchPut(totalWonAmountLST[i].GetUserID(), totalWonAmountLST[i])
+	}
+	if err := users.BatchWrite(); err != nil {
+		Error.Printf("Can't update leaderboard positions.")
 	}
 
 	return leaderboard
@@ -756,67 +759,117 @@ func alignPlayers(players []int64, opts *Options) ([]int64, []int64) {
 	return players[:opts.capacity], players[opts.capacity:]
 }
 
+func transitionToReady(stats *LDBMap) error {
+	if err := stats.Put("ready", "true"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func transitionToGame(stats *LDBMap) error {
+	if err := stats.Put("ready", "false"); err != nil {
+		return err
+	}
+	if err := stats.Put("game", "true"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GamePrepare takes all necessary actions to prepare the game.
 // Sort users by last ticket purchase date and align to ^2 number.
 func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	lastTicketDateSorted := b.users.FormLastTicketDateList()
+	replyCritical := func() {
+		reply = "Due the critical error game couldn't start this time, please " +
+			"accept our apologies and wait for the next round. Your funds are probably safe and sound \U0001f642"
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
+	}
 
-	for _, user := range lastTicketDateSorted {
-		if user.GetHasTicket() == true {
-			userID := user.GetUserID()
-			b.players = append(b.players, userID)
+	if err := b.stats.Put("prepare", "true"); err != nil {
+		Error.Printf("Can't start preparation stage. Can't set prepare to true\n\t%s", err)
+		replyCritical()
+		return
+	}
+
+	if b.stats.Get("ready") == "false" {
+		for _, user := range lastTicketDateSorted {
+			if user.GetHasTicket() == true {
+				userID := user.GetUserID()
+				b.players = append(b.players, userID)
+			}
+		}
+
+		if len(b.players) < 2 {
+			Info.Printf("Not enough players, game won't start.")
+			reply = "There is not enough players, can't start the game for now."
+			replyToMany(b.players, reply, botAPI, mainKeyboard)
+			return
+		}
+
+		tail := []int64{}
+		b.players, tail = alignPlayers(b.players, b.opts)
+		for _, chatID := range b.players {
+			user := b.users.Get(chatID)
+			user.SetIsPlayer(true)
+			user.SetPlaySequence("")
+			user.SetLastWonAmount(0)
+			b.users.BatchPut(chatID, user)
+			reply = fmt.Sprintf("Get ready, game is starting! This time %d players are taking a part.",
+				len(b.players))
+			replyTo(chatID, reply, botAPI, mainKeyboard)
+		}
+
+		reply = "Game is crowded for now, your ticket will play next round."
+		replyToMany(tail, reply, botAPI, mainKeyboard)
+
+		if err := b.users.BatchWrite(); err != nil {
+			Error.Printf("Can't prepare users to the game.")
+			replyToMany(b.players, reply, botAPI, mainKeyboard)
+			return
+		}
+
+		address, _, err := CreateRequest(1, b.opts.bankWalletPath)
+		if err != nil {
+			Error.Printf("Can't create request to move money to the bank. CRITICAL.\n\t%s", err)
+			replyCritical()
+			return
+		}
+		Info.Printf("Request to move funds to the bank created successfully.")
+		move := -1.0
+		if len(tail) != 0 {
+			move = float64(len(b.players)) * b.opts.ticketPrice
+		}
+		if err := PayTo(address, move, b.opts.cashboxWalletPath); err != nil {
+			Error.Printf("Can't move money to the bank. CRITICAL.\n\t%s", err)
+			replyCritical()
+			return
+		}
+		Info.Printf("Funds have been moved to the bank successfully.")
+		if err := ClearRequests(b.opts.bankWalletPath); err != nil {
+			Warning.Printf("Can't clear requests of the bank wallet:\n\t%s", err)
+		} else {
+			Verbose.Printf("Requests of the bank wallet cleared successfully.")
+		}
+
+		// Set ready status to true in case of server shutdown before the game start
+		if err := transitionToReady(b.stats); err != nil {
+			Error.Printf("Can't make a transition to the prepare stage\n\t%s", err)
+			replyCritical()
+			return
 		}
 	}
 
-	if len(b.players) < 2 {
-		Info.Printf("Not enough players, game won't start.")
-		reply = "There is not enough players, can't start the game for now."
-		replyToMany(b.players, reply, botAPI, mainKeyboard)
-		return
-	}
-
-	tail := []int64{}
-	b.players, tail = alignPlayers(b.players, b.opts)
-	for _, chatID := range b.players {
-		user := b.users.Get(chatID)
-		user.SetIsPlayer(true)
-		user.SetPlaySequence("")
-		user.SetLastWonAmount(0)
-		b.users.Put(chatID, user)
-		reply = fmt.Sprintf("Get ready, game is starting! This time %d players are taking a part.",
-			len(b.players))
-		replyTo(chatID, reply, botAPI, mainKeyboard)
-	}
-	reply = "Game is crowded for now, your ticket will play next round."
-	replyToMany(tail, reply, botAPI, mainKeyboard)
-
-	reply = "Due the critical error game couldn't start this time, please " +
-		"accept our apologies and wait for the next round. Your funds are probably safe and sound :)"
-	address, _, err := CreateRequest(1, b.opts.bankWalletPath)
-	if err != nil {
-		Error.Printf("Can't create request to move money to the bank. CRITICAL.\n\t%s", err)
-		replyToMany(b.players, reply, botAPI, mainKeyboard)
-		return
-	}
-	Info.Printf("Request to move funds to the bank created successfully.")
-	if err := PayTo(address, -1, b.opts.cashboxWalletPath); err != nil {
-		Error.Printf("Can't move money to the bank. CRITICAL.\n\t%s", err)
-		replyToMany(b.players, reply, botAPI, mainKeyboard)
-		return
-	}
-	Info.Printf("Funds have been moved to the bank successfully.")
-	if err := ClearRequests(b.opts.bankWalletPath); err != nil {
-		Warning.Printf("Can't clear requests of the bank wallet:\n\t%s", err)
-	} else {
-		Verbose.Printf("Requests of the bank wallet cleared successfully.")
-	}
-
-	// Wait 10 seconds before start the game
+	// Wait 10 seconds before start the actual game
 	time.Sleep(10 * time.Second)
-	if err := b.stats.Put("game", "true"); err != nil {
-		Error.Printf("Can't set game status to true\n\t%s", err)
-		replyToMany(b.players, reply, botAPI, mainKeyboard)
+
+	// Set game status to true in case of server shutdown before the game end
+	if err := transitionToGame(b.stats); err != nil {
+		Error.Printf("Can't make a transition to the game stage\n\t%s", err)
+		replyCritical()
 		return
 	}
 
@@ -844,6 +897,14 @@ func (b *Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
 		reply = fmt.Sprintf("Something wrong has happened, very sorry for inconvenience, "+
 			"but this game is ended for you \U0001f614 Won amount: *%f BCH* \U0001f4b6", user.GetLastWonAmount())
 		replyTo(id, reply, botAPI, mainKeyboard)
+	}
+
+	reply = "Due the critical error game couldn't start this time, please " +
+		"accept our apologies and wait for the next round. Your funds are probably safe and sound \U0001f642"
+	if err := transitionToGame(b.stats); err != nil {
+		Error.Printf("Can't make a transition to the game\n\t%s", err)
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
+		return
 	}
 
 	go b.Play(botAPI)
@@ -1069,7 +1130,7 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 				reply = fmt.Sprintf("You won the final prize \U0001f389 "+
 					"Won amount: *%f BCH* plus extra coins \U0001f381", userWinner.GetLastWonAmount())
 				if b.opts.donationAddress != "" {
-					reply += fmt.Sprintf(" You can support this bot by donating to *%s*"+
+					reply += fmt.Sprintf(" You can support this bot by donating to *%s* "+
 						"Thank you and have a nice day \U0001f60a", b.opts.donationAddress)
 				}
 				replyTo(winner, reply, botAPI, gameKeyboard)
@@ -1118,8 +1179,11 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 			if len(moves) > 0 && moves[len(moves)-1] == '#' {
 				moves = moves[:len(moves)-1]
 				user.SetPlaySequence(moves)
-				b.users.Put(id, user)
+				b.users.BatchPut(id, user)
 			}
+		}
+		if err := b.users.BatchWrite(); err != nil {
+			Error.Printf("Can't remove terminal symbol from play sequences.")
 		}
 	}
 
@@ -1173,7 +1237,7 @@ func (b *Bot) Start() {
 
 	*b.stats = NewLDBMap("stats", b.opts.dbPath)
 	defer b.stats.Close()
-	if b.stats.Get("game") == "true" {
+	if b.stats.Get("game") == "true" || b.stats.Get("ready") == "true" {
 		b.GameRestore(botAPI)
 	}
 
