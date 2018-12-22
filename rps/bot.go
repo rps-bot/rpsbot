@@ -128,7 +128,7 @@ func watchClientModify(chatID int64, channels *SynMap, opts *Options) string {
 				Verbose.Printf("Watching for modify request has been reset:\n\tChatID: %d",
 					chatID)
 			} else {
-				Verbose.Printf("Data modified successfully:\n\tChatID: %d",
+				Verbose.Printf("Stopped to watch, data has been modified:\n\tChatID: %d",
 					chatID)
 			}
 			return val
@@ -413,6 +413,10 @@ func (b *Bot) Leaderboard(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 func (b *Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
+	replyError := func() {
+		reply = "Something went wrong, please try again."
+		replyTo(chatID, reply, botAPI, mainKeyboard)
+	}
 
 	if b.users.Exist(chatID) && b.users.Get(chatID).GetSubscribed() {
 		if clientModifyChannels.Exist(chatID) {
@@ -433,12 +437,30 @@ func (b *Bot) ChangeName(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 			replyTo(chatID, reply, botAPI, mainKeyboard)
 			return
 		}
-		if NameValidate(name) {
+		if NameValidate(name) && !b.names.Exist(name) {
+			oldName := user.GetName()
 			user.SetName(name)
-			b.users.Put(chatID, user)
+			if err := b.names.Delete(oldName); err != nil {
+				Error.Printf("Can't delete old name:\n\tChatID: %d\n\tName: %s",
+					chatID, name)
+				replyError()
+				return
+			}
+			if err := b.users.Put(chatID, user); err != nil {
+				Error.Printf("Can't save user with new name:\n\tChatID: %d\n\tName: %s",
+					chatID, name)
+				replyError()
+				return
+			}
+			if err := b.names.Put(name, ""); err != nil {
+				Error.Printf("Can't save new name:\n\tChatID: %d\n\tName: %s",
+					chatID, name)
+				replyError()
+				return
+			}
 			reply = "Username set successfully!"
 		} else {
-			reply = "This username isn't valid, try to change something."
+			reply = "This username isn't valid or occupied by someone else, try to change something."
 		}
 		replyTo(chatID, reply, botAPI, mainKeyboard)
 	} else {
