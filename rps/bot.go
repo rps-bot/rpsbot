@@ -151,16 +151,6 @@ func (b *Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 	reply := ""
 	chatID := update.Message.Chat.ID
 
-	if clientOpTimeout.Exist(chatID) && clientOpTimeout.Get(chatID).(bool) {
-		reply = fmt.Sprintf(
-			"Please wait a little before calling again :) Timeout is equal to %d seconds.",
-			b.opts.opTimeout,
-		)
-		replyTo(chatID, reply, botAPI, mainKeyboard)
-		return
-	}
-	go clientOpTimeoutWatcher(chatID, b.opts)
-
 	reply = fmt.Sprintf(
 		"*Hello and welcome to Rock-Paper-Scissors Online!*\n\n" +
 
