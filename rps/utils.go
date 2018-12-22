@@ -104,7 +104,14 @@ func NameValidate(name string) bool {
 
 // WalletValidate validates wallet address.
 func WalletValidate(wallet string) bool {
-	if len(wallet) != 42 {
+	_wallet := ""
+
+	idx := strings.Index(wallet, ":")
+	if idx != -1 {
+		_wallet = wallet[idx+1:]
+	}
+
+	if len(_wallet) != 42 {
 		return false
 	}
 

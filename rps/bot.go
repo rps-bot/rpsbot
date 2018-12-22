@@ -96,8 +96,8 @@ func replyTo(
 }
 
 func replyToMany(
-	reply string,
 	ids []int64,
+	reply string,
 	botAPI *tgbotapi.BotAPI,
 	markup interface{},
 ) {
@@ -772,7 +772,7 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	if len(b.players) < 2 {
 		Info.Printf("Not enough players, game won't start.")
 		reply = "There is not enough players, can't start the game for now."
-		replyToMany(reply, b.players, botAPI, mainKeyboard)
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
 		return
 	}
 
@@ -789,20 +789,20 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 		replyTo(chatID, reply, botAPI, mainKeyboard)
 	}
 	reply = "Game is crowded for now, your ticket will play next round."
-	replyToMany(reply, tail, botAPI, mainKeyboard)
+	replyToMany(tail, reply, botAPI, mainKeyboard)
 
 	reply = "Due the critical error game couldn't start this time, please " +
 		"accept our apologies and wait for the next round. Your funds are probably safe and sound :)"
 	address, _, err := CreateRequest(1, b.opts.bankWalletPath)
 	if err != nil {
 		Error.Printf("Can't create request to move money to the bank. CRITICAL.\n\t%s", err)
-		replyToMany(reply, b.players, botAPI, mainKeyboard)
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
 		return
 	}
 	Info.Printf("Request to move funds to the bank created successfully.")
 	if err := PayTo(address, -1, b.opts.cashboxWalletPath); err != nil {
 		Error.Printf("Can't move money to the bank. CRITICAL.\n\t%s", err)
-		replyToMany(reply, b.players, botAPI, mainKeyboard)
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
 		return
 	}
 	Info.Printf("Funds have been moved to the bank successfully.")
@@ -816,7 +816,7 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 	time.Sleep(10 * time.Second)
 	if err := b.stats.Put("game", "true"); err != nil {
 		Error.Printf("Can't set game status to true\n\t%s", err)
-		replyToMany(reply, b.players, botAPI, mainKeyboard)
+		replyToMany(b.players, reply, botAPI, mainKeyboard)
 		return
 	}
 
@@ -828,9 +828,22 @@ func (b *Bot) GameRestore(botAPI *tgbotapi.BotAPI) {
 	for uid, user := range b.users.Iterate() {
 		if user.GetIsPlayer() == true {
 			b.players = append(b.players, uid)
-			reply := "Something wrong has happened, sorry for inconvinience. The game continues!"
-			replyTo(uid, reply, botAPI, gameKeyboard)
 		}
+	}
+	tail := []int64{}
+	b.players, tail = alignPlayers(b.players, b.opts)
+	reply := "Something wrong has happened, sorry for inconvenience. The game continues!"
+	replyToMany(b.players, reply, botAPI, gameKeyboard)
+	for _, id := range tail {
+		userReset(id, b.users)
+		user := b.users.Get(id)
+		if err := PayToUser(user, user.GetLastWonAmount(), b.opts.bankWalletPath); err != nil {
+			Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
+				user.GetUserID(), user.GetName(), err)
+		}
+		reply = fmt.Sprintf("Something wrong has happened, very sorry for inconvenience, "+
+			"but this game is ended for you \U0001f614 Won amount: *%f BCH* \U0001f4b6", user.GetLastWonAmount())
+		replyTo(id, reply, botAPI, mainKeyboard)
 	}
 
 	go b.Play(botAPI)
@@ -1077,7 +1090,8 @@ func (b *Bot) Play(botAPI *tgbotapi.BotAPI) {
 			reply = fmt.Sprintf("You lose! Won amount: *%f BCH* \U0001f4b6",
 				userLoser.GetLastWonAmount())
 			if userLoser.GetLastWonAmount() > 0.0 {
-				if err := PayToUser(userLoser, userLoser.GetLastWonAmount(), b.opts.bankWalletPath); err != nil {
+				if err := PayToUser(userLoser, userLoser.GetLastWonAmount(),
+					b.opts.bankWalletPath); err != nil {
 					Error.Printf("Couldn't pay to user:\n\tUserID: %d\n\tUsername: %s\n\t%s",
 						userLoser.GetUserID(), userLoser.GetName(), err)
 				}
@@ -1143,7 +1157,7 @@ func (b *Bot) Start() {
 		ch := make(chan bool)
 		payChannels.Put(chatID, ch)
 		go b.processBuyTicket(chatID, &payChannels, botAPI)
-		reply := "Something wrong has happened, sorry for inconvinience. " +
+		reply := "Something wrong has happened, sorry for inconvenience. " +
 			"Service just restarted and you can continue with your payment process."
 		replyTo(chatID, reply, botAPI, mainKeyboard)
 	}
