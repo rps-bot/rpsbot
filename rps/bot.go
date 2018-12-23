@@ -170,7 +170,7 @@ func (b *Bot) Welcome(update tgbotapi.Update, botAPI *tgbotapi.BotAPI) {
 			"fourth round you get x3 of ticket price and so on. The final winner " +
 			"get a special prize - all the non raffled money.\n\n" +
 
-			"Don't forget to set up your wallet address otherwise your money " +
+			"*Don't forget* to set up your wallet address otherwise your money " +
 			"remain in the bank until somebody else win it!\n\n" +
 
 			"*Commands you can use:*\n\n" +
@@ -816,6 +816,7 @@ func (b *Bot) GamePrepare(botAPI *tgbotapi.BotAPI) {
 			Info.Printf("Not enough players, game won't start.")
 			reply = "There is not enough players, can't start the game for now."
 			replyToMany(b.players, reply, botAPI, mainKeyboard)
+			b.players = []int64{}
 			return
 		}
 
